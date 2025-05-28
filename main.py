@@ -11,8 +11,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent directory
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 # Initialize Anthropic client
 client = Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
@@ -96,10 +97,7 @@ if st.button("🚀 Analyze Resumes"):
         st.error("⚠️ Limit is 10 resumes at a time.")
     else:
         with st.spinner("Analyzing resumes... Please wait ⏳"):
-            for file in uploaded_files:
-                try:
-                    resume_text = extract_text_from_pdf(file)
-                    result = analyze_resume(resume_text, criteria)
-                    st.markdown(f"<div class='result-box'><strong>{file.name}</strong><br>{result}</div>", unsafe_allow_html=True)
-                except Exception as e:
-                    st.error(f"Error analyzing {file.name}: {e}")
+            for pdf in uploaded_files:
+                text = extract_text_from_pdf(pdf)
+                result = analyze_resume(text, criteria)
+                st.markdown(f"<div class='result-box'><strong>{pdf.name}</strong><br>{result}</div>", unsafe_allow_html=True)
