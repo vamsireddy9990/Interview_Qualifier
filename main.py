@@ -11,9 +11,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Load environment variables from parent directory
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+# Load environment variables
+load_dotenv()
 
 # Initialize Anthropic client
 client = Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
@@ -69,7 +68,8 @@ def extract_text_from_pdf(pdf_file):
     return "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
 
 def analyze_resume(resume_text, criteria):
-    prompt = f"""Please analyze this resume against the given criteria and determine if the candidate qualifies. 
+    prompt = f"""Please analyze this resume against the given criteria and determine if the candidate qualifies.
+The candidate must meet ALL criteria without exception - if even a single criterion is not met, the resume should be rejected.
 
 Resume:
 {resume_text}
@@ -77,9 +77,10 @@ Resume:
 Criteria:
 {criteria}
 
-Respond with ONLY ONE of these two exact phrases:
-"This resume qualifies for the next round of recruitment"
-"This resume doesn't qualify the criteria given"
+First, list out each criterion and whether it was met (YES/NO).
+Then, respond with ONLY ONE of these two exact phrases:
+"This resume qualifies for the next round of recruitment" (ONLY if ALL criteria are met)
+"This resume doesn't qualify the criteria given" (if ANY criterion is not met)
 """
     response = client.messages.create(
         model="claude-3-opus-20240229",
@@ -97,7 +98,10 @@ if st.button("🚀 Analyze Resumes"):
         st.error("⚠️ Limit is 10 resumes at a time.")
     else:
         with st.spinner("Analyzing resumes... Please wait ⏳"):
-            for pdf in uploaded_files:
-                text = extract_text_from_pdf(pdf)
-                result = analyze_resume(text, criteria)
-                st.markdown(f"<div class='result-box'><strong>{pdf.name}</strong><br>{result}</div>", unsafe_allow_html=True)
+            for file in uploaded_files:
+                try:
+                    resume_text = extract_text_from_pdf(file)
+                    result = analyze_resume(resume_text, criteria)
+                    st.markdown(f"<div class='result-box'><strong>{file.name}</strong><br>{result}</div>", unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error analyzing {file.name}: {e}")
