@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# DEBUG: Check if API key is loaded properly
+st.write("API key loaded:", os.getenv("ANTHROPIC_API_KEY"))
+
 # Configure page with custom theme
 st.set_page_config(
     page_title="Sun Interview Qualifier",
