@@ -4,18 +4,18 @@ from anthropic import Client
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
-
-# DEBUG: Check if API key is loaded properly
-st.write("API key loaded:", os.getenv("ANTHROPIC_API_KEY"))
-
-# Configure page with custom theme
+# Configure Streamlit page FIRST
 st.set_page_config(
     page_title="Sun Interview Qualifier",
     page_icon="☀️",
     layout="wide"
 )
+
+# Load environment variables
+load_dotenv()
+
+# DEBUG: Check if API key is loaded properly
+st.write("API key loaded:", os.getenv("ANTHROPIC_API_KEY"))
 
 # Custom CSS for colorful styling
 st.markdown("""
@@ -56,7 +56,6 @@ Respond with ONLY ONE of these two exact phrases:
 "This resume qualifies for the next round of recruitment"
 "This resume doesn't qualify the criteria given"
 """
-
     response = client.messages.create(
         model="claude-3-opus-20240229",
         max_tokens=100,
@@ -74,16 +73,12 @@ uploaded_files = st.file_uploader("Upload Resumes (PDF)",
     accept_multiple_files=True,
     help="Please upload up to 10 PDF files")
 
-# Job criteria input with custom styling
+# Job criteria input
 st.markdown("<h3 style='color: #ff6b6b;'>📋 Job Criteria</h3>", unsafe_allow_html=True)
-criteria = st.text_area("Enter Job Criteria", 
-    height=200,
-    help="Enter the job requirements and qualifications")
+criteria = st.text_area("Enter Job Criteria", height=200, help="Enter the job requirements and qualifications")
 
-# Submit button with custom styling
-if st.button("Analyze Resumes", 
-    type="primary",
-    help="Click to analyze all resumes"):
+# Submit button
+if st.button("Analyze Resumes", type="primary", help="Click to analyze all resumes"):
     if uploaded_files and criteria:
         if len(uploaded_files) > 10:
             st.warning("⚠️ Please upload a maximum of 10 resumes.", icon="⚡")
@@ -91,20 +86,9 @@ if st.button("Analyze Resumes",
             try:
                 with st.spinner('🔄 Analyzing resumes...'):
                     st.markdown("<h3 style='color: #4ecdc4;'>🎯 Analysis Results:</h3>", unsafe_allow_html=True)
-                    
-                    # Create columns for results
                     for i, file in enumerate(uploaded_files):
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            st.write(f"📄 {file.name}")
-                        with col2:
-                            resume_text = extract_text_from_pdf(file)
-                            result = analyze_resume(resume_text, criteria)
-                            if "qualifies" in result:
-                                st.success(result, icon="🌟")
-                            else:
-                                st.error(result, icon="💫")
+                        resume_text = extract_text_from_pdf(file)
+                        result = analyze_resume(resume_text, criteria)
+                        st.markdown(f"**{file.name}**: {result}")
             except Exception as e:
-                st.error(f"⚠️ An error occurred: {e}")
-    else:
-        st.warning("🎯 Please upload PDF resumes and enter the criteria.", icon="⚡")
+                st.error(f"❌ An error occurred: {e}")
