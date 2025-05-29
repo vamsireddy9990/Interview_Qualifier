@@ -1,66 +1,66 @@
 import streamlit as st
 import PyPDF2
-from anthropic import Client
-import os
-from dotenv import load_dotenv
+import pandas as pd
 
 # --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
-# Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
-
-# Initialize Claude (Anthropic) client
-client = Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
-
-# --- CUSTOM CSS ---
+# --- CUSTOM CSS for centering ---
 st.markdown("""
-    <style>
-    html, body, [class*="css"]  {
+<style>
+    body, html {
         font-family: 'Segoe UI', sans-serif;
         background-color: #f9f9f9;
-        font-size: 15.056px !important;
-    }
-    .block-container {
-        padding-top: 2rem;
     }
     .title-style {
         color: #EF476F;
         text-align: center;
-        font-size: 2.634rem;
+        font-size: 2.5rem;
         font-weight: bold;
         margin-bottom: 1rem;
     }
     .sub-header {
-        font-size: 1.223rem;
+        font-size: 1.2rem;
         color: #118AB2;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     div.stButton > button {
         display: block;
         margin: 0 auto;
+        padding: 8px 20px;
+        font-size: 1rem;
     }
-    .results-table {
-        margin: 0 auto;
-        text-align: center;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+    /* Center the dataframe container */
+    div[data-testid="stDataFrameContainer"] {
+        margin-left: auto !important;
+        margin-right: auto !important;
+        max-width: 900px;
+    }
+    /* Center markdown tables */
+    table {
+        margin-left: auto !important;
+        margin-right: auto !important;
+        border-collapse: collapse;
         width: 100%;
+        max-width: 900px;
     }
-    .results-table table {
-        margin: 0 auto;
-        width: 80%;
+    th, td {
+        border: 1px solid #ddd !important;
+        padding: 8px !important;
+        text-align: center !important;
     }
-    </style>
+    th {
+        background-color: #f9f9f9 !important;
+    }
+</style>
 """, unsafe_allow_html=True)
 
+# --- HEADER ---
 st.markdown("<div class='title-style'>☀️ Sun Interview Qualifier</div>", unsafe_allow_html=True)
 
 # --- INPUTS ---
 col1, col2 = st.columns(2)
+
 with col1:
     st.markdown("<div class='sub-header'>📄 Upload up to 10 Resume PDFs</div>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader("Upload PDF resumes", type=["pdf"], accept_multiple_files=True)
@@ -69,40 +69,31 @@ with col2:
     st.markdown("<div class='sub-header'>📋 Enter Job Criteria</div>", unsafe_allow_html=True)
     criteria = st.text_area("Job Description or Selection Criteria", height=200)
 
-# --- EXTRACT TEXT ---
+# --- FUNCTION: Extract text from PDF ---
 def extract_text_from_pdf(pdf_file):
-    reader = PyPDF2.PdfReader(pdf_file)
-    return "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
+    try:
+        reader = PyPDF2.PdfReader(pdf_file)
+        text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        return text
+    except Exception as e:
+        return ""
 
-# --- ANALYZE RESUME ---
+# --- FUNCTION: Analyze Resume ---
 def analyze_resume(resume_text, criteria):
-    prompt = f"""
-Analyze if this resume matches the job criteria.
-
-Resume:
-{resume_text}
-
-Job Criteria:
-{criteria}
-
-Reply with ONLY one of the following:
-- "This resume qualifies for the next round of recruitment"
-- "Does not qualify - missing experience in {criteria}"
-"""
-    response = client.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=100,
-        temperature=0,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    raw = response.content[0].text.strip()
-    if "Does not qualify" in raw:
-        return raw, False
-    elif "qualifies for the next round" in raw:
-        return raw, True
+    """
+    Dummy analysis logic:
+    - If the criteria word appears in the resume text, qualifies.
+    - Else does not qualify.
+    Replace this with your actual AI / NLP logic.
+    """
+    if not resume_text:
+        return "Could not extract text from resume", False
+    if criteria.lower() in resume_text.lower():
+        return "This resume qualifies for the next round of recruitment", True
     else:
-        return f"⚠️ Unexpected response: {raw}", False
+        # Example: Identify a keyword from criteria to mention
+        keyword = criteria.split()[0] if criteria else "required skills"
+        return f"Does not qualify - missing experience in {keyword}", False
 
 # --- ANALYZE ACTION ---
 if st.button("🚀 Analyze Resumes"):
@@ -112,44 +103,42 @@ if st.button("🚀 Analyze Resumes"):
         st.error("⚠️ Limit is 10 resumes at a time.")
     else:
         with st.spinner("Analyzing resumes... ⏳"):
-            qualified_results = []
-            unqualified_results = []
-
-            for idx, pdf in enumerate(uploaded_files, 1):
-                text = extract_text_from_pdf(pdf)
+            results = []
+            for idx, pdf_file in enumerate(uploaded_files, start=1):
+                text = extract_text_from_pdf(pdf_file)
                 analysis, qualifies = analyze_resume(text, criteria)
-
-                result = {
+                rank = "-" if not qualifies else 0  # will assign ranks later
+                results.append({
                     "S.No": idx,
-                    "Resume Name": pdf.name,
+                    "Resume Name": pdf_file.name,
                     "Analysis": analysis,
-                    "Rank": None if not qualifies else 0  # Placeholder
-                }
+                    "Rank": rank
+                })
 
-                if qualifies:
-                    qualified_results.append(result)
-                else:
-                    result["Rank"] = "-"
-                    unqualified_results.append(result)
-
-            # Assign ranks to qualified resumes
-            qualified_results.sort(key=lambda x: x["Resume Name"])  # Update sorting logic as needed
-            for i, r in enumerate(qualified_results, start=1):
+            # Assign rank for qualified resumes only (sorted by Resume Name)
+            qualified = [r for r in results if r["Rank"] == 0]
+            qualified.sort(key=lambda x: x["Resume Name"])
+            for i, r in enumerate(qualified, start=1):
                 r["Rank"] = i
 
-            # Combine all results (qualified first, then unqualified)
-            results = qualified_results + unqualified_results
+            # Put unqualified resumes at the end
+            unqualified = [r for r in results if r["Rank"] == "-"]
 
-            # Re-assign S.No to reflect final display order
-            for i, r in enumerate(results, start=1):
+            final_results = qualified + unqualified
+
+            # Reassign S.No after sorting
+            for i, r in enumerate(final_results, start=1):
                 r["S.No"] = i
 
-            # --- TABLE DISPLAY ---
-            st.markdown("<div class='results-table'>", unsafe_allow_html=True)
-            st.markdown("<h3 style='text-align: center;'>📊 Results:</h3>", unsafe_allow_html=True)
-            table_md = "| S.No | Resume Name | Analysis | Rank |\n|:------:|:------------:|:----------:|:------:|\n"
-            for r in results:
-                table_md += f"| {r['S.No']} | {r['Resume Name']} | {r['Analysis']} | {r['Rank']} |\n"
-            st.markdown(table_md)
-            st.markdown("</div>", unsafe_allow_html=True)
+            # Convert to DataFrame
+            df_results = pd.DataFrame(final_results)
 
+            # Display heading centered
+            st.markdown("<h3 style='text-align: center; color: #118AB2;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
+
+            # Display centered table with styled cells
+            st.dataframe(
+                df_results.style.set_properties(**{
+                    'text-align': 'center'
+                })
+            )
