@@ -20,7 +20,7 @@ st.markdown("""
     html, body, [class*="css"]  {
         font-family: 'Segoe UI', sans-serif;
         background-color: #f9f9f9;
-        font-size: 18.82px !important;
+        font-size: 15.056px !important;
     }
     .block-container {
         padding-top: 2rem;
@@ -28,12 +28,12 @@ st.markdown("""
     .title-style {
         color: #EF476F;
         text-align: center;
-        font-size: 3.293rem;
+        font-size: 2.634rem;
         font-weight: bold;
         margin-bottom: 1rem;
     }
     .sub-header {
-        font-size: 1.529rem;
+        font-size: 1.223rem;
         color: #118AB2;
         margin-bottom: 1rem;
     }
@@ -152,3 +152,4 @@ if st.button("🚀 Analyze Resumes"):
                 table_md += f"| {r['S.No']} | {r['Resume Name']} | {r['Analysis']} | {r['Rank']} |\n"
             st.markdown(table_md)
             st.markdown("</div>", unsafe_allow_html=True)
+
