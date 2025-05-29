@@ -1,6 +1,7 @@
 import streamlit as st
 import PyPDF2
 import pandas as pd
+import io
 
 # --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
@@ -52,6 +53,11 @@ st.markdown("""
     th {
         background-color: #f9f9f9 !important;
     }
+    /* Center download button */
+    div.stDownloadButton > button {
+        display: block !important;
+        margin: 0 auto !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,7 +81,7 @@ def extract_text_from_pdf(pdf_file):
         reader = PyPDF2.PdfReader(pdf_file)
         text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
         return text
-    except Exception as e:
+    except Exception:
         return ""
 
 # --- FUNCTION: Analyze Resume ---
@@ -91,7 +97,6 @@ def analyze_resume(resume_text, criteria):
     if criteria.lower() in resume_text.lower():
         return "This resume qualifies for the next round of recruitment", True
     else:
-        # Example: Identify a keyword from criteria to mention
         keyword = criteria.split()[0] if criteria else "required skills"
         return f"Does not qualify - missing experience in {keyword}", False
 
@@ -142,3 +147,20 @@ if st.button("🚀 Analyze Resumes"):
                     'text-align': 'center'
                 })
             )
+            
+            # Prepare Excel file in memory
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_results.to_excel(writer, index=False)
+            excel_data = output.getvalue()
+
+            # Center container for download button
+            col1, col2, col3 = st.columns([1,2,1])
+            with col2:
+                # Download button
+                st.download_button(
+                    label="📥 Download Results as Excel",
+                    data=excel_data,
+                    file_name="resume_analysis_results.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
