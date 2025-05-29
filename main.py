@@ -17,19 +17,21 @@ st.markdown("""
         color: #EF476F;
         text-align: center;
         font-size: 2.5rem;
-        font-weight: bold;
+        font-weight: 900;  /* Increased from bold to 900 */
         margin-bottom: 1rem;
     }
     .sub-header {
         font-size: 1.2rem;
         color: #118AB2;
         margin-bottom: 0.5rem;
+        font-weight: 700;  /* Added bold for sub-headers */
     }
     div.stButton > button {
         display: block;
         margin: 0 auto;
         padding: 8px 20px;
         font-size: 1rem;
+        font-weight: 700;  /* Added bold for buttons */
     }
     /* Center the dataframe container */
     div[data-testid="stDataFrameContainer"] {
@@ -52,11 +54,13 @@ st.markdown("""
     }
     th {
         background-color: #f9f9f9 !important;
+        font-weight: 700 !important;  /* Added bold for table headers */
     }
     /* Center download button */
     div.stDownloadButton > button {
         display: block !important;
         margin: 0 auto !important;
+        font-weight: 700 !important;  /* Added bold for download button */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -139,11 +143,12 @@ if st.button("🚀 Analyze Resumes"):
             df_results = pd.DataFrame(final_results)
 
             # Display heading centered
-            st.markdown("<h3 style='text-align: center; color: #118AB2;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; color: #118AB2; font-weight: 900;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
 
             # Display centered table with styled cells
             st.dataframe(
                 df_results.style.set_properties(**{
-                    'text-align': 'center'
+                    'text-align': 'center',
+                    'font-weight': '700'
                 })
             )
