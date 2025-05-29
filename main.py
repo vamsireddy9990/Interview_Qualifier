@@ -2,8 +2,8 @@ import streamlit as st
 import PyPDF2
 import pandas as pd
 import io
-# test commit
-# --- SETUP ---
+# test commit1
+#  --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
 # --- CUSTOM CSS for centering ---
@@ -152,3 +152,4 @@ if st.button("🚀 Analyze Resumes"):
                     'font-weight': '700'
                 })
             )
+
