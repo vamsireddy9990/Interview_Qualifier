@@ -20,7 +20,7 @@ st.markdown("""
     html, body, [class*="css"]  {
         font-family: 'Segoe UI', sans-serif;
         background-color: #f9f9f9;
-        font-size: 22.4px !important;
+        font-size: 18.82px !important;
     }
     .block-container {
         padding-top: 2rem;
@@ -28,12 +28,12 @@ st.markdown("""
     .title-style {
         color: #EF476F;
         text-align: center;
-        font-size: 3.92rem;
+        font-size: 3.293rem;
         font-weight: bold;
         margin-bottom: 1rem;
     }
     .sub-header {
-        font-size: 1.82rem;
+        font-size: 1.529rem;
         color: #118AB2;
         margin-bottom: 1rem;
     }
@@ -44,6 +44,15 @@ st.markdown("""
     .results-table {
         margin: 0 auto;
         text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+    }
+    .results-table table {
+        margin: 0 auto;
+        width: 80%;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -124,17 +133,21 @@ if st.button("🚀 Analyze Resumes"):
                     unqualified_results.append(result)
 
             # Assign ranks to qualified resumes
-            qualified_results.sort(key=lambda x: x["Resume Name"])  # Sort logic can be updated
+            qualified_results.sort(key=lambda x: x["Resume Name"])  # Update sorting logic as needed
             for i, r in enumerate(qualified_results, start=1):
                 r["Rank"] = i
 
-            # Combine all results
+            # Combine all results (qualified first, then unqualified)
             results = qualified_results + unqualified_results
+
+            # Re-assign S.No to reflect final display order
+            for i, r in enumerate(results, start=1):
+                r["S.No"] = i
 
             # --- TABLE DISPLAY ---
             st.markdown("<div class='results-table'>", unsafe_allow_html=True)
-            st.markdown("### 📊 Results:")
-            table_md = "| S.No | Resume Name | Analysis | Rank |\n|------|--------------|----------|------|\n"
+            st.markdown("<h3 style='text-align: center;'>📊 Results:</h3>", unsafe_allow_html=True)
+            table_md = "| S.No | Resume Name | Analysis | Rank |\n|:------:|:------------:|:----------:|:------:|\n"
             for r in results:
                 table_md += f"| {r['S.No']} | {r['Resume Name']} | {r['Analysis']} | {r['Rank']} |\n"
             st.markdown(table_md)
