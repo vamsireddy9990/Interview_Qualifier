@@ -147,20 +147,3 @@ if st.button("🚀 Analyze Resumes"):
                     'text-align': 'center'
                 })
             )
-            
-            # Prepare Excel file in memory
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_results.to_excel(writer, index=False)
-            excel_data = output.getvalue()
-
-            # Center container for download button
-            col1, col2, col3 = st.columns([1,2,1])
-            with col2:
-                # Download button
-                st.download_button(
-                    label="📥 Download Results as Excel",
-                    data=excel_data,
-                    file_name="resume_analysis_results.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
