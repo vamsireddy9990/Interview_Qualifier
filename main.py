@@ -3,215 +3,154 @@ import PyPDF2
 import pandas as pd
 import re
 from datetime import datetime
+from dateutil import parser as date_parser
+from sentence_transformers import SentenceTransformer, util
 
 # --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
-# --- CUSTOM CSS for centering ---
+# --- CUSTOM CSS ---
 st.markdown("""
 <style>
-    body, html {
-        font-family: 'Segoe UI', sans-serif;
-        background-color: #f9f9f9;
-    }
-    .title-style {
-        color: #EF476F;
-        text-align: center;
-        font-size: 2.5rem;
-        font-weight: bold;
-        margin-bottom: 1rem;
-    }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #118AB2;
-        margin-bottom: 0.5rem;
-    }
-    div.stButton > button {
-        display: block;
-        margin: 0 auto;
-        padding: 8px 20px;
-        font-size: 1rem;
-    }
-    div[data-testid="stDataFrameContainer"] {
-        margin-left: auto !important;
-        margin-right: auto !important;
-        max-width: 900px;
-    }
-    table {
-        margin-left: auto !important;
-        margin-right: auto !important;
-        border-collapse: collapse;
-        width: 100%;
-        max-width: 900px;
-    }
-    th, td {
-        border: 1px solid #ddd !important;
-        padding: 8px !important;
-        text-align: center !important;
-    }
-    th {
-        background-color: #f9f9f9 !important;
-    }
+.title-style { text-align:center; font-size:2.5rem; color:#EF476F; font-weight:bold; margin-bottom:1rem; }
+.sub-header { font-size:1.2rem; color:#118AB2; margin-bottom:0.5rem; }
+div.stButton > button { display:block; margin:0 auto; padding:8px 20px; font-size:1rem; }
+div[data-testid="stDataFrameContainer"] { margin-left:auto; margin-right:auto; max-width:900px; }
 </style>
 """, unsafe_allow_html=True)
 
 # --- HEADER ---
 st.markdown("<div class='title-style'>☀️ Sun Interview Qualifier</div>", unsafe_allow_html=True)
 
-# --- INPUTS ---
+# --- INPUT ---
 col1, col2 = st.columns(2)
-
 with col1:
     st.markdown("<div class='sub-header'>📄 Upload up to 10 Resume PDFs</div>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader("Upload PDF resumes", type=["pdf"], accept_multiple_files=True)
-
 with col2:
     st.markdown("<div class='sub-header'>📋 Enter Job Criteria</div>", unsafe_allow_html=True)
     criteria = st.text_area("Job Description or Selection Criteria", height=200)
 
-# --- FUNCTIONS ---
-
+# --- HELPER: Extract text ---
 def extract_text_from_pdf(pdf_file):
     try:
         reader = PyPDF2.PdfReader(pdf_file)
         text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
         return text
-    except Exception:
+    except:
         return ""
 
-def extract_dob(text):
-    # Regex to capture common date formats - extend as needed
-    date_patterns = [
-        r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',      # e.g. 12/05/1996 or 12-05-1996
-        r'(\d{4}[/-]\d{1,2}[/-]\d{1,2})',        # e.g. 1996-05-12
-        r'(\d{1,2} \w+ \d{4})',                   # e.g. 12 May 1996
-    ]
-    for pattern in date_patterns:
-        matches = re.findall(pattern, text)
-        for match in matches:
-            try:
-                # Try parsing with multiple date formats
-                for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d %B %Y", "%d %b %Y"):
-                    try:
-                        dob = datetime.strptime(match, fmt)
-                        # Skip future dates, they are invalid
-                        if dob <= datetime.now():
-                            return dob
-                    except:
-                        pass
-            except:
-                continue
+# --- HELPER: Calculate Age ---
+def extract_age(text):
+    dob_matches = re.findall(r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})', text)
+    for dob in dob_matches:
+        try:
+            birth_date = date_parser.parse(dob, dayfirst=True)
+            age = (datetime.today() - birth_date).days // 365
+            return age
+        except:
+            continue
     return None
 
-def calculate_age(dob):
-    today = datetime.today()
-    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    return age
+# --- HELPER: Calculate Experience in Years ---
+def extract_experience_years(text):
+    # Patterns like Jan 2018 - Mar 2020 or 2019 to 2023
+    ranges = re.findall(r'(?P<start>\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\.?\s?\d{4})\s?(?:to|[-–])\s?(?P<end>\b(?:Present|\d{4}))', text, flags=re.IGNORECASE)
+    total_months = 0
+    for start, end in ranges:
+        try:
+            start_date = date_parser.parse(start)
+            end_date = datetime.today() if 'present' in end.lower() else date_parser.parse(end)
+            total_months += max(0, (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month))
+        except:
+            continue
+    return round(total_months / 12, 2)
 
-def parse_criteria(criteria_text):
-    """
-    Parse criteria text for special checks:
-    - Look for 'age<26', 'age>30', etc. 
-    - Return a dict with keys like {'age': ('<', 26)}
-    """
-    criteria_dict = {}
-    # Extract age condition with regex
-    age_match = re.search(r'age\s*([<>]=?)\s*(\d+)', criteria_text.lower())
-    if age_match:
-        op = age_match.group(1)
-        val = int(age_match.group(2))
-        criteria_dict['age'] = (op, val)
-    return criteria_dict
+# --- HELPER: Check criteria ---
+def check_criteria(text, criteria):
+    analysis_notes = []
+    qualifies = True
 
-def check_age_criteria(age, op, val):
-    if op == '<':
-        return age < val
-    elif op == '<=':
-        return age <= val
-    elif op == '>':
-        return age > val
-    elif op == '>=':
-        return age >= val
-    return False
+    age = extract_age(text)
+    experience = extract_experience_years(text)
 
-def analyze_resume(resume_text, criteria_text):
-    if not resume_text:
-        return "Could not extract text from resume", False
-
-    crit_dict = parse_criteria(criteria_text)
-
-    missing_criteria = []
-
-    # Check age criteria
-    if 'age' in crit_dict:
-        dob = extract_dob(resume_text)
-        if dob is None:
-            missing_criteria.append("Date of Birth (DOB) not found to verify age")
+    for line in criteria.split("\n"):
+        line = line.strip().lower()
+        if not line:
+            continue
+        if "age" in line:
+            try:
+                if "<" in line:
+                    threshold = int(re.findall(r'\d+', line)[0])
+                    if age is None or age >= threshold:
+                        qualifies = False
+                        analysis_notes.append(f"Does not qualify: Age is {age} (Expected < {threshold})")
+                elif ">" in line:
+                    threshold = int(re.findall(r'\d+', line)[0])
+                    if age is None or age <= threshold:
+                        qualifies = False
+                        analysis_notes.append(f"Does not qualify: Age is {age} (Expected > {threshold})")
+            except:
+                analysis_notes.append("Unable to parse age requirement.")
+        elif "experience" in line:
+            try:
+                if "<" in line:
+                    threshold = float(re.findall(r'\d+(?:\.\d+)?', line)[0])
+                    if experience is None or experience >= threshold:
+                        qualifies = False
+                        analysis_notes.append(f"Does not qualify: Experience is {experience} years (Expected < {threshold})")
+                elif ">" in line:
+                    threshold = float(re.findall(r'\d+(?:\.\d+)?', line)[0])
+                    if experience is None or experience <= threshold:
+                        qualifies = False
+                        analysis_notes.append(f"Does not qualify: Experience is {experience} years (Expected > {threshold})")
+            except:
+                analysis_notes.append("Unable to parse experience requirement.")
         else:
-            age = calculate_age(dob)
-            op, val = crit_dict['age']
-            if not check_age_criteria(age, op, val):
-                missing_criteria.append(f"Age criteria not met (candidate age: {age} years)")
+            # Use semantic match for skills/qualifications
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            emb_criteria = model.encode(line, convert_to_tensor=True)
+            emb_text = model.encode(text, convert_to_tensor=True)
+            score = util.cos_sim(emb_criteria, emb_text).item()
+            if score < 0.4:
+                qualifies = False
+                analysis_notes.append(f"Does not match semantic criteria: '{line}'")
 
-    # For other criteria, simple semantic presence check (case-insensitive)
-    # Remove age condition from criteria to avoid false check
-    criteria_no_age = re.sub(r'age\s*[<>]=?\s*\d+', '', criteria_text, flags=re.I).strip()
-    if criteria_no_age:
-        # Split criteria words and check if all present in resume text
-        # (You can improve this logic with NLP libraries)
-        missing_keywords = [word for word in criteria_no_age.lower().split() if word and word not in resume_text.lower()]
-        if missing_keywords:
-            missing_criteria.append(f"Missing keywords: {', '.join(missing_keywords)}")
-
-    if missing_criteria:
-        return "Does not qualify - " + "; ".join(missing_criteria), False
+    if qualifies:
+        return "✅ This resume qualifies for the next round of recruitment", True
     else:
-        return "This resume qualifies for the next round of recruitment", True
+        return "❌ " + " | ".join(analysis_notes), False
 
-# --- ANALYZE ACTION ---
+# --- MAIN ACTION ---
 if st.button("🚀 Analyze Resumes"):
     if not uploaded_files or not criteria:
-        st.warning("Please upload resumes and provide job criteria.")
+        st.warning("Please upload resumes and enter selection criteria.")
     elif len(uploaded_files) > 10:
-        st.error("⚠️ Limit is 10 resumes at a time.")
+        st.error("⚠️ Limit is 10 resumes.")
     else:
         with st.spinner("Analyzing resumes... ⏳"):
             results = []
-            for idx, pdf_file in enumerate(uploaded_files, start=1):
-                text = extract_text_from_pdf(pdf_file)
-                analysis, qualifies = analyze_resume(text, criteria)
-                rank = "-" if not qualifies else 0  # will assign ranks later
+            for idx, pdf in enumerate(uploaded_files, 1):
+                text = extract_text_from_pdf(pdf)
+                analysis, qualifies = check_criteria(text, criteria)
+                rank = 0 if qualifies else "-"
                 results.append({
                     "S.No": idx,
-                    "Resume Name": pdf_file.name,
+                    "Resume Name": pdf.name,
                     "Analysis": analysis,
                     "Rank": rank
                 })
 
-            # Assign rank for qualified resumes only (sorted by Resume Name)
+            # Ranking and formatting
             qualified = [r for r in results if r["Rank"] == 0]
             qualified.sort(key=lambda x: x["Resume Name"])
-            for i, r in enumerate(qualified, start=1):
+            for i, r in enumerate(qualified, 1):
                 r["Rank"] = i
-
-            # Put unqualified resumes at the end
-            unqualified = [r for r in results if r["Rank"] == "-"]
-
-            final_results = qualified + unqualified
-
-            # Reassign S.No after sorting
-            for i, r in enumerate(final_results, start=1):
+            final_results = qualified + [r for r in results if r["Rank"] == "-"]
+            for i, r in enumerate(final_results, 1):
                 r["S.No"] = i
 
-            # Convert to DataFrame
             df_results = pd.DataFrame(final_results)
 
-            # Display heading centered
             st.markdown("<h3 style='text-align: center; color: #118AB2;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
-
-            # Display centered table with styled cells
-            st.dataframe(
-                df_results.style.set_properties(**{
-                    'text-align': 'center'
-                })
-            )
+            st.dataframe(df_results.style.set_properties(**{'text-align': 'center'}))
