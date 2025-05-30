@@ -2,6 +2,7 @@ import streamlit as st
 import PyPDF2
 import pandas as pd
 import re
+from datetime import datetime
 
 # --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
@@ -31,13 +32,11 @@ st.markdown("""
         padding: 8px 20px;
         font-size: 1rem;
     }
-    /* Center the dataframe container */
     div[data-testid="stDataFrameContainer"] {
         margin-left: auto !important;
         margin-right: auto !important;
         max-width: 900px;
     }
-    /* Center markdown tables */
     table {
         margin-left: auto !important;
         margin-right: auto !important;
@@ -67,115 +66,120 @@ with col1:
     uploaded_files = st.file_uploader("Upload PDF resumes", type=["pdf"], accept_multiple_files=True)
 
 with col2:
-    st.markdown("<div class='sub-header'>📋 Enter Job Criteria (separate by commas)</div>", unsafe_allow_html=True)
-    criteria_input = st.text_area("Example: MBA, age < 26, experience >= 3 years", height=200)
+    st.markdown("<div class='sub-header'>📋 Enter Job Criteria</div>", unsafe_allow_html=True)
+    criteria = st.text_area("Job Description or Selection Criteria", height=200)
 
-# --- FUNCTION: Extract text from PDF ---
+# --- FUNCTIONS ---
+
 def extract_text_from_pdf(pdf_file):
     try:
         reader = PyPDF2.PdfReader(pdf_file)
         text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-        return text.lower()  # lowercase for easier matching
+        return text
     except Exception:
         return ""
 
-# --- FUNCTION: Parse criteria into conditions and keywords ---
+def extract_dob(text):
+    # Regex to capture common date formats - extend as needed
+    date_patterns = [
+        r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',      # e.g. 12/05/1996 or 12-05-1996
+        r'(\d{4}[/-]\d{1,2}[/-]\d{1,2})',        # e.g. 1996-05-12
+        r'(\d{1,2} \w+ \d{4})',                   # e.g. 12 May 1996
+    ]
+    for pattern in date_patterns:
+        matches = re.findall(pattern, text)
+        for match in matches:
+            try:
+                # Try parsing with multiple date formats
+                for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d %B %Y", "%d %b %Y"):
+                    try:
+                        dob = datetime.strptime(match, fmt)
+                        # Skip future dates, they are invalid
+                        if dob <= datetime.now():
+                            return dob
+                    except:
+                        pass
+            except:
+                continue
+    return None
+
+def calculate_age(dob):
+    today = datetime.today()
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    return age
+
 def parse_criteria(criteria_text):
-    criteria_list = [c.strip() for c in criteria_text.split(",") if c.strip()]
-    conditions = []
-    keywords = []
-    for c in criteria_list:
-        if re.match(r'(age|experience)\s*[<>=]+\s*\d+', c.lower()):
-            conditions.append(c.lower())
-        else:
-            keywords.append(c.lower())
-    return conditions, keywords
+    """
+    Parse criteria text for special checks:
+    - Look for 'age<26', 'age>30', etc. 
+    - Return a dict with keys like {'age': ('<', 26)}
+    """
+    criteria_dict = {}
+    # Extract age condition with regex
+    age_match = re.search(r'age\s*([<>]=?)\s*(\d+)', criteria_text.lower())
+    if age_match:
+        op = age_match.group(1)
+        val = int(age_match.group(2))
+        criteria_dict['age'] = (op, val)
+    return criteria_dict
 
-# --- FUNCTION: Check numeric conditions ---
-def check_condition(resume_text, condition):
-    # age <number>
-    m_age = re.match(r'age\s*([<>=]+)\s*(\d+)', condition)
-    if m_age:
-        operator, val = m_age.group(1), int(m_age.group(2))
-        # Try extract age from resume: look for 'age: 25' or '25 years old' etc.
-        age_match = re.search(r'age[:\s]*([0-9]{1,2})', resume_text)
-        if not age_match:
-            age_match = re.search(r'([0-9]{1,2})\s*years\s*old', resume_text)
-        if age_match:
-            age = int(age_match.group(1))
-            if operator == '<':
-                return age < val
-            elif operator == '>':
-                return age > val
-            elif operator == '<=':
-                return age <= val
-            elif operator == '>=':
-                return age >= val
-            elif operator == '==':
-                return age == val
-        return False  # Age not found means condition not met
-
-    # experience <number>
-    m_exp = re.match(r'experience\s*([<>=]+)\s*(\d+)', condition)
-    if m_exp:
-        operator, val = m_exp.group(1), int(m_exp.group(2))
-        # Try extract experience years from resume, e.g. "3 years experience", "experience: 5"
-        exp_match = re.search(r'experience[:\s]*([0-9]+)', resume_text)
-        if not exp_match:
-            exp_match = re.search(r'([0-9]+)\s*years\s*experience', resume_text)
-        if exp_match:
-            exp = int(exp_match.group(1))
-            if operator == '<':
-                return exp < val
-            elif operator == '>':
-                return exp > val
-            elif operator == '<=':
-                return exp <= val
-            elif operator == '>=':
-                return exp >= val
-            elif operator == '==':
-                return exp == val
-        return False  # Experience not found means condition not met
-
-    # If unknown condition, return False
+def check_age_criteria(age, op, val):
+    if op == '<':
+        return age < val
+    elif op == '<=':
+        return age <= val
+    elif op == '>':
+        return age > val
+    elif op == '>=':
+        return age >= val
     return False
 
-# --- FUNCTION: Analyze Resume ---
-def analyze_resume(resume_text, conditions, keywords):
+def analyze_resume(resume_text, criteria_text):
     if not resume_text:
         return "Could not extract text from resume", False
 
+    crit_dict = parse_criteria(criteria_text)
+
     missing_criteria = []
 
-    # Check numeric conditions
-    for cond in conditions:
-        if not check_condition(resume_text, cond):
-            missing_criteria.append(cond)
+    # Check age criteria
+    if 'age' in crit_dict:
+        dob = extract_dob(resume_text)
+        if dob is None:
+            missing_criteria.append("Date of Birth (DOB) not found to verify age")
+        else:
+            age = calculate_age(dob)
+            op, val = crit_dict['age']
+            if not check_age_criteria(age, op, val):
+                missing_criteria.append(f"Age criteria not met (candidate age: {age} years)")
 
-    # Check keywords presence (simple substring match)
-    for kw in keywords:
-        if kw not in resume_text:
-            missing_criteria.append(kw)
+    # For other criteria, simple semantic presence check (case-insensitive)
+    # Remove age condition from criteria to avoid false check
+    criteria_no_age = re.sub(r'age\s*[<>]=?\s*\d+', '', criteria_text, flags=re.I).strip()
+    if criteria_no_age:
+        # Split criteria words and check if all present in resume text
+        # (You can improve this logic with NLP libraries)
+        missing_keywords = [word for word in criteria_no_age.lower().split() if word and word not in resume_text.lower()]
+        if missing_keywords:
+            missing_criteria.append(f"Missing keywords: {', '.join(missing_keywords)}")
 
-    if not missing_criteria:
-        return "This resume qualifies for the next round of recruitment", True
+    if missing_criteria:
+        return "Does not qualify - " + "; ".join(missing_criteria), False
     else:
-        missing_str = ", ".join(missing_criteria)
-        return f"Does not qualify - missing criteria: {missing_str}", False
+        return "This resume qualifies for the next round of recruitment", True
 
 # --- ANALYZE ACTION ---
 if st.button("🚀 Analyze Resumes"):
-    if not uploaded_files or not criteria_input:
+    if not uploaded_files or not criteria:
         st.warning("Please upload resumes and provide job criteria.")
     elif len(uploaded_files) > 10:
         st.error("⚠️ Limit is 10 resumes at a time.")
     else:
         with st.spinner("Analyzing resumes... ⏳"):
-            conditions, keywords = parse_criteria(criteria_input)
             results = []
             for idx, pdf_file in enumerate(uploaded_files, start=1):
                 text = extract_text_from_pdf(pdf_file)
-                analysis, qualifies = analyze_resume(text, conditions, keywords)
+                analysis, qualifies = analyze_resume(text, criteria)
                 rank = "-" if not qualifies else 0  # will assign ranks later
                 results.append({
                     "S.No": idx,
