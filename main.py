@@ -1,11 +1,13 @@
 import streamlit as st
 import PyPDF2
 import pandas as pd
+import re
+from datetime import datetime
 
 # --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
-# --- CUSTOM CSS for centering ---
+# --- CUSTOM CSS ---
 st.markdown("""
 <style>
     body, html {
@@ -30,13 +32,11 @@ st.markdown("""
         padding: 8px 20px;
         font-size: 1rem;
     }
-    /* Center the dataframe container */
     div[data-testid="stDataFrameContainer"] {
         margin-left: auto !important;
         margin-right: auto !important;
         max-width: 900px;
     }
-    /* Center markdown tables */
     table {
         margin-left: auto !important;
         margin-right: auto !important;
@@ -67,78 +67,109 @@ with col1:
 
 with col2:
     st.markdown("<div class='sub-header'>📋 Enter Job Criteria</div>", unsafe_allow_html=True)
-    criteria = st.text_area("Job Description or Selection Criteria", height=200)
+    criteria_input = st.text_area("Job Description or Selection Criteria (e.g. 'MBA', 'experience < 3', 'age < 26')", height=200)
 
-# --- FUNCTION: Extract text from PDF ---
+# --- UTILITY FUNCTIONS ---
 def extract_text_from_pdf(pdf_file):
     try:
         reader = PyPDF2.PdfReader(pdf_file)
         text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
         return text
-    except Exception as e:
+    except:
         return ""
 
-# --- FUNCTION: Analyze Resume ---
-def analyze_resume(resume_text, criteria):
-    """
-    Dummy analysis logic:
-    - If the criteria word appears in the resume text, qualifies.
-    - Else does not qualify.
-    Replace this with your actual AI / NLP logic.
-    """
-    if not resume_text:
+def calculate_experience(text):
+    # Extract years like '2018 - 2022', 'Jan 2020 to Dec 2023'
+    date_patterns = re.findall(r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s?\d{4})\s?(?:-|to)\s?(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s?\d{4}|Present)', text, flags=re.IGNORECASE)
+    total_months = 0
+    for start, end in date_patterns:
+        try:
+            start_date = datetime.strptime(start.strip(), "%b %Y") if len(start.strip().split()) == 2 else datetime.strptime(start.strip(), "%Y")
+            end_date = datetime.today() if "present" in end.lower() else (datetime.strptime(end.strip(), "%b %Y") if len(end.strip().split()) == 2 else datetime.strptime(end.strip(), "%Y"))
+            total_months += (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+        except:
+            continue
+    return round(total_months / 12, 1)
+
+def extract_age(text):
+    dob_patterns = re.findall(r'(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})', text)
+    for dob in dob_patterns:
+        try:
+            dob_clean = dob.replace('/', '-').replace("\\", "-")
+            dob_date = datetime.strptime(dob_clean, "%d-%m-%Y") if '-' in dob_clean else datetime.strptime(dob_clean, "%Y-%m-%d")
+            age = (datetime.today() - dob_date).days // 365
+            return age
+        except:
+            continue
+    return None
+
+def analyze_resume(text, criteria):
+    if not text:
         return "Could not extract text from resume", False
-    if criteria.lower() in resume_text.lower():
-        return "This resume qualifies for the next round of recruitment", True
-    else:
-        # Example: Identify a keyword from criteria to mention
-        keyword = criteria.split()[0] if criteria else "required skills"
-        return f"Does not qualify - missing experience in {keyword}", False
+
+    experience = calculate_experience(text)
+    age = extract_age(text)
+
+    lines = [c.strip() for c in criteria.splitlines() if c.strip()]
+    for line in lines:
+        if "experience" in line.lower():
+            try:
+                years = float(re.findall(r"\d+", line)[0])
+                if ">" in line and not (experience > years):
+                    return f"Does not qualify - experience is {experience} years, required > {years}", False
+                elif "<" in line and not (experience < years):
+                    return f"Does not qualify - experience is {experience} years, required < {years}", False
+            except:
+                continue
+        elif "age" in line.lower():
+            try:
+                limit = int(re.findall(r"\d+", line)[0])
+                if age is None:
+                    return f"Could not determine age", False
+                if ">" in line and not (age > limit):
+                    return f"Does not qualify - age is {age}, required > {limit}", False
+                elif "<" in line and not (age < limit):
+                    return f"Does not qualify - age is {age}, required < {limit}", False
+            except:
+                continue
+        else:
+            if line.lower() not in text.lower():
+                return f"Does not qualify - missing keyword: {line}", False
+
+    return "This resume qualifies for the next round of recruitment", True
 
 # --- ANALYZE ACTION ---
 if st.button("🚀 Analyze Resumes"):
-    if not uploaded_files or not criteria:
+    if not uploaded_files or not criteria_input:
         st.warning("Please upload resumes and provide job criteria.")
     elif len(uploaded_files) > 10:
         st.error("⚠️ Limit is 10 resumes at a time.")
     else:
-        with st.spinner("Analyzing resumes... ⏳"):
+        with st.spinner("Analyzing resumes... ⌛"):
             results = []
-            for idx, pdf_file in enumerate(uploaded_files, start=1):
-                text = extract_text_from_pdf(pdf_file)
-                analysis, qualifies = analyze_resume(text, criteria)
-                rank = "-" if not qualifies else 0  # will assign ranks later
+            for idx, file in enumerate(uploaded_files, start=1):
+                text = extract_text_from_pdf(file)
+                analysis, qualifies = analyze_resume(text, criteria_input)
+                rank = 0 if qualifies else "-"
                 results.append({
                     "S.No": idx,
-                    "Resume Name": pdf_file.name,
+                    "Resume Name": file.name,
                     "Analysis": analysis,
                     "Rank": rank
                 })
 
-            # Assign rank for qualified resumes only (sorted by Resume Name)
             qualified = [r for r in results if r["Rank"] == 0]
             qualified.sort(key=lambda x: x["Resume Name"])
             for i, r in enumerate(qualified, start=1):
                 r["Rank"] = i
 
-            # Put unqualified resumes at the end
             unqualified = [r for r in results if r["Rank"] == "-"]
+            final = qualified + unqualified
 
-            final_results = qualified + unqualified
-
-            # Reassign S.No after sorting
-            for i, r in enumerate(final_results, start=1):
+            for i, r in enumerate(final, start=1):
                 r["S.No"] = i
 
-            # Convert to DataFrame
-            df_results = pd.DataFrame(final_results)
+            df_results = pd.DataFrame(final)
 
-            # Display heading centered
             st.markdown("<h3 style='text-align: center; color: #118AB2;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
-
-            # Display centered table with styled cells
-            st.dataframe(
-                df_results.style.set_properties(**{
-                    'text-align': 'center'
-                })
-            )
+            st.dataframe(df_results.style.set_properties(**{'text-align': 'center'}))
