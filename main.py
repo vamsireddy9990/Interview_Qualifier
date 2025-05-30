@@ -67,93 +67,89 @@ with col1:
 
 with col2:
     st.markdown("<div class='sub-header'>📋 Enter Job Criteria</div>", unsafe_allow_html=True)
-    criteria_input = st.text_area("Job Description or Selection Criteria (e.g. 'MBA', 'experience < 3', 'age < 26')", height=200)
+    criteria = st.text_area("Job Description or Selection Criteria", height=200)
 
-# --- UTILITY FUNCTIONS ---
+# --- FUNCTIONS ---
 def extract_text_from_pdf(pdf_file):
     try:
         reader = PyPDF2.PdfReader(pdf_file)
-        text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-        return text
+        return "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
     except:
         return ""
 
-def calculate_experience(text):
-    # Extract years like '2018 - 2022', 'Jan 2020 to Dec 2023'
-    date_patterns = re.findall(r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s?\d{4})\s?(?:-|to)\s?(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s?\d{4}|Present)', text, flags=re.IGNORECASE)
-    total_months = 0
-    for start, end in date_patterns:
-        try:
-            start_date = datetime.strptime(start.strip(), "%b %Y") if len(start.strip().split()) == 2 else datetime.strptime(start.strip(), "%Y")
-            end_date = datetime.today() if "present" in end.lower() else (datetime.strptime(end.strip(), "%b %Y") if len(end.strip().split()) == 2 else datetime.strptime(end.strip(), "%Y"))
-            total_months += (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-        except:
-            continue
-    return round(total_months / 12, 1)
-
-def extract_age(text):
-    dob_patterns = re.findall(r'(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})', text)
-    for dob in dob_patterns:
-        try:
-            dob_clean = dob.replace('/', '-').replace("\\", "-")
-            dob_date = datetime.strptime(dob_clean, "%d-%m-%Y") if '-' in dob_clean else datetime.strptime(dob_clean, "%Y-%m-%d")
-            age = (datetime.today() - dob_date).days // 365
-            return age
-        except:
-            continue
+def extract_dob_and_calculate_age(resume_text):
+    dob_patterns = [
+        r"(?:DOB|Date of Birth)[:\- ]*\s*(\d{2}[\/\-]\d{2}[\/\-]\d{4})",
+        r"(?:DOB|Date of Birth)[:\- ]*\s*(\d{4}[\/\-]\d{2}[\/\-]\d{2})",
+    ]
+    for pattern in dob_patterns:
+        match = re.search(pattern, resume_text, re.IGNORECASE)
+        if match:
+            dob_str = match.group(1)
+            for fmt in ["%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%Y-%m-%d"]:
+                try:
+                    dob = datetime.strptime(dob_str, fmt)
+                    age = (datetime.today() - dob).days // 365
+                    return age
+                except:
+                    continue
     return None
 
-def analyze_resume(text, criteria):
-    if not text:
+def analyze_resume(resume_text, criteria):
+    if not resume_text:
         return "Could not extract text from resume", False
 
-    experience = calculate_experience(text)
-    age = extract_age(text)
+    c = criteria.lower().strip()
+    
+    # --- Age Criteria ---
+    if "age" in c:
+        age = extract_dob_and_calculate_age(resume_text)
+        if age is None:
+            return "Date of Birth not found", False
+        try:
+            expr = c.replace("age", str(age))
+            if eval(expr):
+                return "This resume qualifies for the next round of recruitment", True
+            else:
+                return f"This resume does not qualify: {criteria}", False
+        except:
+            return "Error evaluating age criteria", False
 
-    lines = [c.strip() for c in criteria.splitlines() if c.strip()]
-    for line in lines:
-        if "experience" in line.lower():
-            try:
-                years = float(re.findall(r"\d+", line)[0])
-                if ">" in line and not (experience > years):
-                    return f"Does not qualify - experience is {experience} years, required > {years}", False
-                elif "<" in line and not (experience < years):
-                    return f"Does not qualify - experience is {experience} years, required < {years}", False
-            except:
-                continue
-        elif "age" in line.lower():
-            try:
-                limit = int(re.findall(r"\d+", line)[0])
-                if age is None:
-                    return f"Could not determine age", False
-                if ">" in line and not (age > limit):
-                    return f"Does not qualify - age is {age}, required > {limit}", False
-                elif "<" in line and not (age < limit):
-                    return f"Does not qualify - age is {age}, required < {limit}", False
-            except:
-                continue
-        else:
-            if line.lower() not in text.lower():
-                return f"Does not qualify - missing keyword: {line}", False
+    # --- Experience Criteria ---
+    if "experience" in c:
+        matches = re.findall(r'(\d+)\+?\s*(?:years|yrs)', resume_text, re.IGNORECASE)
+        exp_years = sum(int(m) for m in matches)
+        try:
+            expr = c.replace("experience", str(exp_years))
+            if eval(expr):
+                return "This resume qualifies for the next round of recruitment", True
+            else:
+                return f"This resume does not qualify: {criteria}", False
+        except:
+            return "Error evaluating experience criteria", False
 
-    return "This resume qualifies for the next round of recruitment", True
+    # --- Keyword Matching ---
+    if criteria.lower() in resume_text.lower():
+        return "This resume qualifies for the next round of recruitment", True
+    else:
+        return f"Does not qualify - missing in criteria: {criteria}", False
 
 # --- ANALYZE ACTION ---
 if st.button("🚀 Analyze Resumes"):
-    if not uploaded_files or not criteria_input:
+    if not uploaded_files or not criteria:
         st.warning("Please upload resumes and provide job criteria.")
     elif len(uploaded_files) > 10:
         st.error("⚠️ Limit is 10 resumes at a time.")
     else:
-        with st.spinner("Analyzing resumes... ⌛"):
+        with st.spinner("Analyzing resumes... ⏳"):
             results = []
-            for idx, file in enumerate(uploaded_files, start=1):
-                text = extract_text_from_pdf(file)
-                analysis, qualifies = analyze_resume(text, criteria_input)
+            for idx, pdf_file in enumerate(uploaded_files, start=1):
+                text = extract_text_from_pdf(pdf_file)
+                analysis, qualifies = analyze_resume(text, criteria)
                 rank = 0 if qualifies else "-"
                 results.append({
                     "S.No": idx,
-                    "Resume Name": file.name,
+                    "Resume Name": pdf_file.name,
                     "Analysis": analysis,
                     "Rank": rank
                 })
@@ -164,12 +160,10 @@ if st.button("🚀 Analyze Resumes"):
                 r["Rank"] = i
 
             unqualified = [r for r in results if r["Rank"] == "-"]
-            final = qualified + unqualified
-
-            for i, r in enumerate(final, start=1):
+            final_results = qualified + unqualified
+            for i, r in enumerate(final_results, start=1):
                 r["S.No"] = i
 
-            df_results = pd.DataFrame(final)
-
+            df_results = pd.DataFrame(final_results)
             st.markdown("<h3 style='text-align: center; color: #118AB2;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
             st.dataframe(df_results.style.set_properties(**{'text-align': 'center'}))
