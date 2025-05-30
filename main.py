@@ -4,7 +4,7 @@ from anthropic import Client
 import os
 from dotenv import load_dotenv
 
-# --- SETUP ---
+# --- SETUP1 ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
 # Load environment variables
