@@ -4,17 +4,25 @@ from anthropic import Client
 import os
 from dotenv import load_dotenv
 
-# --- SETUP1 ---
+# Page config
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
-# Load environment variables
+# Try loading from .env (for local)
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+load_dotenv(dotenv_path)
 
-# Initialize Claude (Anthropic) client
-client = Client(api_key=os.getenv('ANTHROPIC_API_KEY'))
+# First try .env, then fallback to st.secrets
+api_key = os.getenv("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY")
 
-# --- CUSTOM CSS ---
+# Fail safely if key is missing
+if not api_key:
+    st.error("❌ Anthropic API key not found in .env or Streamlit secrets.")
+    st.stop()
+
+# Initialize client
+client = Client(api_key=api_key)
+
+# CSS
 st.markdown("""
     <style>
     html, body, [class*="css"]  {
@@ -50,7 +58,7 @@ st.markdown("""
 
 st.markdown("<div class='title-style'>☀️ Sun Interview Qualifier</div>", unsafe_allow_html=True)
 
-# --- INPUTS ---
+# Input columns
 col1, col2 = st.columns(2)
 with col1:
     st.markdown("<div class='sub-header'>📄 Upload up to 10 Resume PDFs</div>", unsafe_allow_html=True)
@@ -60,12 +68,12 @@ with col2:
     st.markdown("<div class='sub-header'>📋 Enter Job Criteria</div>", unsafe_allow_html=True)
     criteria = st.text_area("Job Description or Selection Criteria", height=200)
 
-# --- EXTRACT TEXT ---
+# PDF text extractor
 def extract_text_from_pdf(pdf_file):
     reader = PyPDF2.PdfReader(pdf_file)
     return "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
 
-# --- ANALYZE RESUME ---
+# Claude analysis
 def analyze_resume(resume_text, criteria):
     prompt = f"""
 Analyze if this resume matches the job criteria.
@@ -95,7 +103,7 @@ Reply with ONLY one of the following:
     else:
         return f"⚠️ Unexpected response: {raw}", False
 
-# --- ANALYZE ACTION ---
+# Button logic
 if st.button("🚀 Analyze Resumes"):
     if not uploaded_files or not criteria:
         st.warning("Please upload resumes and provide job criteria.")
@@ -114,7 +122,7 @@ if st.button("🚀 Analyze Resumes"):
                     "S.No": idx,
                     "Resume Name": pdf.name,
                     "Analysis": analysis,
-                    "Rank": None if not qualifies else 0  # Placeholder
+                    "Rank": None if not qualifies else 0  # Temporary
                 }
 
                 if qualifies:
@@ -123,15 +131,15 @@ if st.button("🚀 Analyze Resumes"):
                     result["Rank"] = "-"
                     unqualified_results.append(result)
 
-            # Assign ranks to qualified resumes
-            qualified_results.sort(key=lambda x: x["Resume Name"])  # Sort logic can be updated
+            # Rank qualified
+            qualified_results.sort(key=lambda x: x["Resume Name"])
             for i, r in enumerate(qualified_results, start=1):
                 r["Rank"] = i
 
-            # Combine all results
+            # Combine
             results = qualified_results + unqualified_results
 
-            # --- TABLE DISPLAY ---
+            # Show table
             st.markdown("<div class='results-table'>", unsafe_allow_html=True)
             st.markdown("### 📊 Results:")
             table_md = "| S.No | Resume Name | Analysis | Rank |\n|------|--------------|----------|------|\n"
