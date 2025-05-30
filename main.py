@@ -1,9 +1,8 @@
 import streamlit as st
 import PyPDF2
 import pandas as pd
-import io
-# test commit1
-#  --- SETUP ---
+
+# --- SETUP ---
 st.set_page_config(page_title="Sun Interview Qualifier", page_icon="☀️", layout="wide")
 
 # --- CUSTOM CSS for centering ---
@@ -17,21 +16,19 @@ st.markdown("""
         color: #EF476F;
         text-align: center;
         font-size: 2.5rem;
-        font-weight: 900;  /* Increased from bold to 900 */
+        font-weight: bold;
         margin-bottom: 1rem;
     }
     .sub-header {
         font-size: 1.2rem;
         color: #118AB2;
         margin-bottom: 0.5rem;
-        font-weight: 700;  /* Added bold for sub-headers */
     }
     div.stButton > button {
         display: block;
         margin: 0 auto;
         padding: 8px 20px;
         font-size: 1rem;
-        font-weight: 700;  /* Added bold for buttons */
     }
     /* Center the dataframe container */
     div[data-testid="stDataFrameContainer"] {
@@ -54,13 +51,6 @@ st.markdown("""
     }
     th {
         background-color: #f9f9f9 !important;
-        font-weight: 700 !important;  /* Added bold for table headers */
-    }
-    /* Center download button */
-    div.stDownloadButton > button {
-        display: block !important;
-        margin: 0 auto !important;
-        font-weight: 700 !important;  /* Added bold for download button */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -85,47 +75,25 @@ def extract_text_from_pdf(pdf_file):
         reader = PyPDF2.PdfReader(pdf_file)
         text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
         return text
-    except Exception:
+    except Exception as e:
         return ""
 
 # --- FUNCTION: Analyze Resume ---
 def analyze_resume(resume_text, criteria):
     """
-    Enhanced analysis logic:
-    - Splits criteria into key terms
-    - Checks for contextual matches in resume
-    - Considers partial matches and related terms
+    Dummy analysis logic:
+    - If the criteria word appears in the resume text, qualifies.
+    - Else does not qualify.
+    Replace this with your actual AI / NLP logic.
     """
     if not resume_text:
         return "Could not extract text from resume", False
-        
-    # Convert both texts to lowercase for comparison
-    resume_text = resume_text.lower()
-    criteria = criteria.lower()
-    
-    # Split criteria into key terms (removing common words)
-    common_words = {'and', 'or', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'a', 'an'}
-    key_terms = [term.strip() for term in criteria.split() if term.strip() and term not in common_words]
-    
-    # Count matching terms
-    matches = []
-    for term in key_terms:
-        # Check for exact matches
-        if term in resume_text:
-            matches.append(term)
-        # Check for plural/singular variations
-        elif term + 's' in resume_text or (term.endswith('s') and term[:-1] in resume_text):
-            matches.append(term)
-            
-    # Calculate match percentage
-    match_percentage = len(matches) / len(key_terms) if key_terms else 0
-    
-    if match_percentage >= 0.6:  # 60% or more matches
-        matched_skills = ", ".join(matches)
-        return f"Qualifies - Matched skills: {matched_skills}", True
+    if criteria.lower() in resume_text.lower():
+        return "This resume qualifies for the next round of recruitment", True
     else:
-        missing_skills = ", ".join(set(key_terms) - set(matches))
-        return f"Does not qualify - Missing key skills: {missing_skills}", False
+        # Example: Identify a keyword from criteria to mention
+        keyword = criteria.split()[0] if criteria else "required skills"
+        return f"Does not qualify - missing experience in {keyword}", False
 
 # --- ANALYZE ACTION ---
 if st.button("🚀 Analyze Resumes"):
@@ -166,12 +134,11 @@ if st.button("🚀 Analyze Resumes"):
             df_results = pd.DataFrame(final_results)
 
             # Display heading centered
-            st.markdown("<h3 style='text-align: center; color: #118AB2; font-weight: 900;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; color: #118AB2;'>📊 Analysis Results</h3>", unsafe_allow_html=True)
 
             # Display centered table with styled cells
             st.dataframe(
                 df_results.style.set_properties(**{
-                    'text-align': 'center',
-                    'font-weight': '700'
+                    'text-align': 'center'
                 })
             )
