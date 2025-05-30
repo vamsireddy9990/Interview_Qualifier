@@ -91,18 +91,41 @@ def extract_text_from_pdf(pdf_file):
 # --- FUNCTION: Analyze Resume ---
 def analyze_resume(resume_text, criteria):
     """
-    Dummy analysis logic:
-    - If the criteria word appears in the resume text, qualifies.
-    - Else does not qualify.
-    Replace this with your actual AI / NLP logic.
+    Enhanced analysis logic:
+    - Splits criteria into key terms
+    - Checks for contextual matches in resume
+    - Considers partial matches and related terms
     """
     if not resume_text:
         return "Could not extract text from resume", False
-    if criteria.lower() in resume_text.lower():
-        return "This resume qualifies for the next round of recruitment", True
+        
+    # Convert both texts to lowercase for comparison
+    resume_text = resume_text.lower()
+    criteria = criteria.lower()
+    
+    # Split criteria into key terms (removing common words)
+    common_words = {'and', 'or', 'the', 'in', 'on', 'at', 'to', 'for', 'with', 'a', 'an'}
+    key_terms = [term.strip() for term in criteria.split() if term.strip() and term not in common_words]
+    
+    # Count matching terms
+    matches = []
+    for term in key_terms:
+        # Check for exact matches
+        if term in resume_text:
+            matches.append(term)
+        # Check for plural/singular variations
+        elif term + 's' in resume_text or (term.endswith('s') and term[:-1] in resume_text):
+            matches.append(term)
+            
+    # Calculate match percentage
+    match_percentage = len(matches) / len(key_terms) if key_terms else 0
+    
+    if match_percentage >= 0.6:  # 60% or more matches
+        matched_skills = ", ".join(matches)
+        return f"Qualifies - Matched skills: {matched_skills}", True
     else:
-        keyword = criteria.split()[0] if criteria else "required skills"
-        return f"Does not qualify - missing experience in {keyword}", False
+        missing_skills = ", ".join(set(key_terms) - set(matches))
+        return f"Does not qualify - Missing key skills: {missing_skills}", False
 
 # --- ANALYZE ACTION ---
 if st.button("🚀 Analyze Resumes"):
@@ -152,4 +175,3 @@ if st.button("🚀 Analyze Resumes"):
                     'font-weight': '700'
                 })
             )
-
